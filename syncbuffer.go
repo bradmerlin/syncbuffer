@@ -6,11 +6,12 @@ import (
 	"time"
 )
 
-// NewSyncBuffer returns a cancellable streaming buffer.
+// NewSyncBuffer returns a syncbuffer.
 func NewSyncBuffer(ctx context.Context, freq time.Duration) *SyncBuffer {
 	c, canceller := context.WithCancel(ctx)
 
 	r := &SyncBuffer{
+		b:      newCursorBuffer(),
 		ctx:    c,
 		cancel: canceller,
 		freq:   freq,
@@ -22,54 +23,47 @@ func NewSyncBuffer(ctx context.Context, freq time.Duration) *SyncBuffer {
 }
 
 // SyncBuffer contains an internal read cursor that moves forward
-// at the given frequency.
+// at the buffer's frequency.
 type SyncBuffer struct {
-	data   [][]byte
+	b      *cursorBuffer
 	cancel context.CancelFunc
 	freq   time.Duration
-	mux    sync.RWMutex
 	ctx    context.Context
-	cursor int
 }
 
 // Add appends items to the buffer.
-func (t *SyncBuffer) Add(p []byte) {
-	t.mux.Lock()
-	t.data = append(t.data, p)
-	t.mux.Unlock()
+func (s *SyncBuffer) Add(p []byte) {
+	s.b.Add(p)
 }
 
-// startClock moves the buffer's internal cursor forward at a frequency specified
-// by the buffer.
-func (t *SyncBuffer) startClock() {
+// startClock moves the buffer's internal cursor forward at the buffer's frequency.
+func (s *SyncBuffer) startClock() {
 	go func() {
 		for {
 			select {
-			case <-t.ctx.Done():
+			case <-s.ctx.Done():
 				return
 			default:
 			}
 
-			if t.cursor < len(t.data) {
-				t.cursor++
-			}
+			s.b.Increment()
 
-			time.Sleep(t.freq)
+			time.Sleep(s.freq)
 		}
 	}()
 }
 
 // Close stops the cursor from moving forward, and flushes all readers.
-func (t *SyncBuffer) Close() {
-	t.cancel()
+func (s *SyncBuffer) Close() {
+	s.cancel()
 }
 
 // Reader returns a new StreamReader that points at the parent buffer.
-func (t *SyncBuffer) Reader(ctx context.Context) *StreamReader {
+func (s *SyncBuffer) Reader(ctx context.Context) *StreamReader {
 	return &StreamReader{
-		t:      t,
-		cursor: t.cursor,
+		t:      s,
 		ctx:    ctx,
+		cursor: s.b.Cursor(),
 	}
 }
 
@@ -85,7 +79,8 @@ func (sr *StreamReader) Stream() chan []byte {
 	output := make(chan []byte)
 	go func() {
 		for {
-			if sr.cursor >= len(sr.t.data) {
+			// If we can't read anything from the parent buffer, stop streaming.
+			if sr.t.b.Read(sr.cursor) == nil {
 				close(output)
 				return
 			}
@@ -93,13 +88,7 @@ func (sr *StreamReader) Stream() chan []byte {
 			select {
 			case <-sr.t.ctx.Done():
 				// If parent closes, send the remaining data as one packet.
-				var remainder []byte
-				for _, p := range sr.t.data[sr.cursor:] {
-					remainder = append(remainder, p...)
-				}
-
-				output <- remainder
-
+				output <- sr.t.b.Rest(sr.cursor)
 				close(output)
 				return
 			case <-sr.ctx.Done():
@@ -109,13 +98,80 @@ func (sr *StreamReader) Stream() chan []byte {
 			default:
 			}
 
-			sr.t.mux.RLock()
-			output <- sr.t.data[sr.cursor]
-			sr.t.mux.RUnlock()
-
+			output <- sr.t.b.Read(sr.cursor)
 			sr.cursor++
 		}
 	}()
 
 	return output
+}
+
+func newCursorBuffer() *cursorBuffer {
+	return &cursorBuffer{}
+}
+
+type cursorBuffer struct {
+	data     [][]byte
+	dataLock sync.RWMutex
+
+	cursor     int
+	cursorLock sync.RWMutex
+}
+
+// Add appends items to the buffer.
+func (cb *cursorBuffer) Add(p []byte) {
+	cb.dataLock.Lock()
+	cb.data = append(cb.data, p)
+	cb.dataLock.Unlock()
+}
+
+// Increment increments the buffer's read cursor. If the cursor is at the end of the buffer,
+// this is a no-op.
+func (cb *cursorBuffer) Increment() {
+	if cb.cursor >= len(cb.data)-1 {
+		return
+	}
+
+	cb.cursorLock.Lock()
+	cb.cursor++
+	cb.cursorLock.Unlock()
+}
+
+func (cb *cursorBuffer) Cursor() int {
+	cb.cursorLock.RLock()
+	c := cb.cursor
+	cb.cursorLock.RUnlock()
+	return c
+}
+
+func (cb *cursorBuffer) Read(cursor int) []byte {
+	if cursor >= len(cb.data) {
+		return nil
+	}
+	cb.dataLock.RLock()
+	p := cb.data[cursor]
+	cb.dataLock.RUnlock()
+
+	return p
+}
+
+func (cb *cursorBuffer) Rest(cursor int) []byte {
+	if cursor >= len(cb.data) {
+		return nil
+	}
+	cb.dataLock.RLock()
+	pl := cb.data[cursor:]
+	cb.dataLock.RUnlock()
+
+	var packet []byte
+	for _, p := range pl {
+		packet = append(packet, p...)
+	}
+
+	return packet
+}
+
+func (cb *cursorBuffer) Next() []byte {
+	cb.Increment()
+	return cb.Read(cb.Cursor())
 }
