@@ -8,7 +8,6 @@ import (
 // NewSyncBuffer returns a sync buffer.
 func NewSyncBuffer(ctx context.Context, m Metronome) *SyncBuffer {
 	r := &SyncBuffer{
-		b:   NewSeekBuffer(),
 		ctx: ctx,
 	}
 
@@ -20,13 +19,8 @@ func NewSyncBuffer(ctx context.Context, m Metronome) *SyncBuffer {
 // SyncBuffer contains an internal read cursor that moves forward
 // at the buffer's frequency.
 type SyncBuffer struct {
-	b   *SeekBuffer
+	SeekBuffer
 	ctx context.Context
-}
-
-// Add appends items to the buffer.
-func (s *SyncBuffer) Add(p []byte) {
-	s.b.Add(p)
 }
 
 // Reader returns a new Streamer that points at the parent buffer.
@@ -34,7 +28,7 @@ func (s *SyncBuffer) Reader(ctx context.Context) *Streamer {
 	return &Streamer{
 		t:      s,
 		ctx:    ctx,
-		cursor: s.b.Cursor(),
+		cursor: s.Cursor(),
 	}
 }
 
@@ -42,7 +36,7 @@ func (s *SyncBuffer) Reader(ctx context.Context) *Streamer {
 func (s *SyncBuffer) startClock(m Metronome) {
 	go func() {
 		for range m.Beat() {
-			s.b.Increment()
+			s.Increment()
 		}
 	}()
 }
@@ -69,7 +63,7 @@ func (sr *Streamer) Stream() chan []byte {
 			case <-sr.t.ctx.Done():
 				// If parent closes, check if there is any data remaining.
 				// If so, send the remaining data as one packet.
-				remainder := sr.t.b.Rest(sr.cursor)
+				remainder := sr.t.Rest(sr.cursor)
 				if len(remainder) > 0 {
 					output <- remainder
 				}
@@ -80,7 +74,7 @@ func (sr *Streamer) Stream() chan []byte {
 			}
 
 			// If we can't read anything from the parent buffer, just wait one second.
-			packet := sr.t.b.Read(sr.cursor)
+			packet := sr.t.Read(sr.cursor)
 			if packet == nil {
 				time.Sleep(time.Second)
 				continue

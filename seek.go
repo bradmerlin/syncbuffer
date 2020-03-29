@@ -25,8 +25,9 @@ type SeekBuffer struct {
 // Add appends items to the buffer.
 func (s *SeekBuffer) Add(p ...[]byte) {
 	s.dataLock.Lock()
+	defer s.dataLock.Unlock()
+
 	s.data = append(s.data, p...)
-	s.dataLock.Unlock()
 }
 
 // Increment increments the buffer's read cursor.
@@ -40,10 +41,9 @@ func (s *SeekBuffer) Increment() {
 
 func (s *SeekBuffer) Cursor() int {
 	s.cursorLock.RLock()
-	c := s.cursor
-	s.cursorLock.RUnlock()
+	defer s.cursorLock.RUnlock()
 
-	return c
+	return s.cursor
 }
 
 func (s *SeekBuffer) Read(cursor int) []byte {
@@ -52,10 +52,9 @@ func (s *SeekBuffer) Read(cursor int) []byte {
 	}
 
 	s.dataLock.RLock()
-	p := s.data[cursor]
-	s.dataLock.RUnlock()
+	defer s.dataLock.RUnlock()
 
-	return p
+	return s.data[cursor]
 }
 
 func (s *SeekBuffer) Rest(cursor int) []byte {
@@ -85,8 +84,8 @@ func (s *SeekBuffer) seek(position int) error {
 	}
 
 	s.cursorLock.Lock()
-	s.cursor = position
-	s.cursorLock.Unlock()
+	defer s.cursorLock.Unlock()
 
+	s.cursor = position
 	return nil
 }

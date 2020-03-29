@@ -50,11 +50,8 @@ func NewManualMetronome(ctx context.Context) (Metronome, func()) {
 	manualBeat := make(chan struct{})
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			close(manualBeat)
-			return
-		}
+		<-ctx.Done()
+		close(manualBeat)
 	}()
 
 	m := manualMetronome{
