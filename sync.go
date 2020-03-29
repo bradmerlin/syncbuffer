@@ -54,7 +54,8 @@ type Streamer struct {
 	cursor int
 }
 
-// Stream returns a channel that will emit packets at the parent buffer's frequency.
+// Stream returns a channel that will emit packets from the parent's current cursor
+// and will wait for more packets if the end is reached.
 func (sr *Streamer) Stream() chan []byte {
 	output := make(chan []byte)
 
