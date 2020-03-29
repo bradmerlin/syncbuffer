@@ -49,19 +49,21 @@ func (m *frequencyMetronome) Beat() chan struct{} {
 func NewManualMetronome(ctx context.Context) (Metronome, func()) {
 	manualBeat := make(chan struct{})
 
+	go func() {
+		select {
+		case <-ctx.Done():
+			close(manualBeat)
+			return
+		}
+	}()
+
 	m := manualMetronome{
 		ctx:        ctx,
 		manualBeat: manualBeat,
 	}
 
 	f := func() {
-		select {
-		case <-ctx.Done():
-			close(manualBeat)
-			return
-		default:
-			manualBeat <- struct{}{}
-		}
+		manualBeat <- struct{}{}
 	}
 
 	return &m, f

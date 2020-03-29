@@ -50,20 +50,21 @@ func TestSyncBufferCursor(t *testing.T) {
 		beat()
 	}
 
+	// I have made peace with this for now.
+	time.Sleep(time.Millisecond)
+
 	// Reader should now start from the middle of the buffer
 	r := sb.Reader(ctx)
 
 	var count int
 	for range r.Stream() {
 		count++
-		if count == size/2-1 {
+		if count == size/2 {
 			cancel()
 		}
 	}
 
-	// Cancel might take a few iterations to propagate, so don't test exact values.
-	assert.GreaterOrEqual(t, count, size/2-1)
-	assert.Less(t, count, size/2+2)
+	assert.Equal(t, size/2, count)
 }
 
 func TestSyncBufferCancel(t *testing.T) {
@@ -107,8 +108,6 @@ func TestSyncBuffer_ReaderCancel(t *testing.T) {
 
 	var count int
 	for p := range r.Stream() {
-		// This is lame, but if cancel takes two iterations to propagate, it's OK.
-		time.Sleep(time.Millisecond)
 		cancel()
 
 		if count == 2 {
