@@ -78,11 +78,7 @@ func (s *SeekBuffer) Rest(cursor int) []byte {
 func (s *SeekBuffer) Resize() {
 	s.dataLock.Lock()
 	defer s.dataLock.Unlock()
-
-	data := make([][]byte, len(s.data)-s.Cursor())
-	copy(data, s.data[s.Cursor():])
-
-	s.data = data
+	s.data = append(s.data[:0:0], s.data[s.Cursor():]...)
 	s.seek(0)
 }
 
