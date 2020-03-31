@@ -24,10 +24,11 @@ func TestSyncBufferOrder(t *testing.T) {
 
 	var count int
 	for p := range r.Stream() {
-		assert.Equal(t, []byte{byte(count)}, p)
+		if count < size {
+			assert.Equal(t, []byte{byte(count)}, p)
+		}
 
 		count++
-
 		if count == size {
 			cancel()
 		}

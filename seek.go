@@ -7,13 +7,12 @@ import (
 const errSeekBeforeBuffer Error = "cannot seek past the start of the buffer"
 const errSeekBeyondBuffer Error = "cannot seek past the end of the buffer"
 
-// NewSeekBuffer returns a buffer that allows streaming from any point in its saved data.
-// SeekBuffers are thread-safe.
-// This buffer currently holds all information in memory.
+// NewSeekBuffer returns a seekable buffer.
 func NewSeekBuffer() *SeekBuffer {
 	return &SeekBuffer{}
 }
 
+// SeekBuffer is a thread-safe way to store byte lists and seek through them.
 type SeekBuffer struct {
 	data     [][]byte
 	dataLock sync.RWMutex
@@ -74,12 +73,25 @@ func (s *SeekBuffer) Rest(cursor int) []byte {
 	return packet
 }
 
+// Resize removes redundant packets from the buffer by replacing the buffer's data
+// with a new array that is the remainder of the buffer after the cursor.
+func (s *SeekBuffer) Resize() {
+	s.dataLock.Lock()
+	defer s.dataLock.Unlock()
+
+	data := make([][]byte, len(s.data)-s.Cursor())
+	copy(data, s.data[s.Cursor():])
+
+	s.data = data
+	s.seek(0)
+}
+
 func (s *SeekBuffer) seek(position int) error {
 	if position < 0 {
 		return errSeekBeforeBuffer
 	}
 
-	if position > len(s.data)-1 {
+	if position > len(s.data) {
 		return errSeekBeyondBuffer
 	}
 

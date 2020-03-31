@@ -28,11 +28,6 @@ func TestSeekBuffer_Cursor_Increment(t *testing.T) {
 	sb.Increment()
 	assert.Equal(t, 0, sb.Cursor())
 
-	// Increment still does nothing because now there is actually data at index 0.
-	sb.Add([]byte{})
-	sb.Increment()
-	assert.Equal(t, 0, sb.Cursor())
-
 	// Increment increments.
 	sb.Add([]byte{})
 	sb.Increment()
@@ -49,4 +44,36 @@ func TestSeekBuffer_Rest(t *testing.T) {
 	sb.Increment()
 
 	assert.Len(t, sb.Rest(sb.Cursor()), 2)
+}
+
+func TestSeekBuffer_Resize(t *testing.T) {
+	sb := NewSeekBuffer()
+
+	// Resizing a new buffer should still yield an empty result.
+	sb.Resize()
+	assert.Nil(t, sb.Read(sb.Cursor()))
+
+	sb.Add([]byte{1})
+	sb.Add([]byte{2})
+	sb.Add([]byte{3})
+
+	// Resizing a buffer with items but a zero cursor should return the same buffer.
+	sb.Resize()
+	assert.Equal(t, []byte{1}, sb.Read(sb.Cursor()))
+	assert.Len(t, sb.data, 3)
+
+	// Incrementing the cursor then resizing the buffer should result in a buffer
+	// with one item popped from the beginning.
+	sb.Increment()
+	sb.Resize()
+	assert.Equal(t, []byte{2}, sb.Read(sb.Cursor()))
+	assert.Len(t, sb.data, 2)
+
+	// Etc.
+	sb.Increment()
+	assert.Equal(t, []byte{3}, sb.Read(sb.Cursor()))
+
+	// Seeking past the end of the new buffer still yields empty slice.
+	sb.Increment()
+	assert.Nil(t, sb.Read(sb.Cursor()))
 }
