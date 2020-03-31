@@ -1,17 +1,18 @@
 package syncbuffer
 
 import (
-	"context"
+	"sync"
 	"time"
 )
 
 // NewSyncBuffer returns a sync buffer.
-func NewSyncBuffer(ctx context.Context, m Metronome) *SyncBuffer {
+func NewSyncBuffer(m Metronome) *SyncBuffer {
 	r := &SyncBuffer{
-		ctx: ctx,
+		quit: make(chan struct{}),
+		m:    m,
 	}
 
-	r.startClock(m)
+	r.startClock()
 
 	return r
 }
@@ -20,22 +21,29 @@ func NewSyncBuffer(ctx context.Context, m Metronome) *SyncBuffer {
 // at the buffer's frequency.
 type SyncBuffer struct {
 	SeekBuffer
-	ctx context.Context
+	m Metronome
+
+	quit chan struct{}
 }
 
 // Reader returns a new Streamer that points at the parent buffer.
-func (s *SyncBuffer) Reader(ctx context.Context) *Streamer {
+func (s *SyncBuffer) Reader() *Streamer {
 	return &Streamer{
-		t:      s,
-		ctx:    ctx,
+		sb:     s,
 		cursor: s.Cursor(),
+		quit:   make(chan struct{}),
 	}
 }
 
+func (s *SyncBuffer) Close() {
+	s.m.Stop()
+	close(s.quit)
+}
+
 // startClock moves the buffer's internal cursor forward at the metronome's frequency.
-func (s *SyncBuffer) startClock(m Metronome) {
+func (s *SyncBuffer) startClock() {
 	go func() {
-		for range m.Beat() {
+		for range s.m.Beat() {
 			s.Increment()
 		}
 	}()
@@ -43,9 +51,11 @@ func (s *SyncBuffer) startClock(m Metronome) {
 
 // Streamer is a thread-safe way to stream items from a parent buffer.
 type Streamer struct {
-	t      *SyncBuffer
-	ctx    context.Context
+	sb     *SyncBuffer
 	cursor int
+
+	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
 // Stream returns a channel that will emit packets from the parent's current cursor
@@ -53,17 +63,20 @@ type Streamer struct {
 func (sr *Streamer) Stream() chan []byte {
 	output := make(chan []byte)
 
+	sr.wg.Add(1)
 	go func() {
+		defer sr.wg.Done()
+
 		for {
 			select {
-			case <-sr.ctx.Done():
+			case <-sr.quit:
 				// If the caller closes, just exit immediately.
 				close(output)
 				return
-			case <-sr.t.ctx.Done():
+			case <-sr.sb.quit:
 				// If parent closes, check if there is any data remaining.
 				// If so, send the remaining data as one packet.
-				remainder := sr.t.Rest(sr.cursor)
+				remainder := sr.sb.Rest(sr.cursor)
 				if len(remainder) > 0 {
 					output <- remainder
 				}
@@ -73,8 +86,8 @@ func (sr *Streamer) Stream() chan []byte {
 			default:
 			}
 
-			// If we can't read anything from the parent buffer, just wait one second.
-			packet := sr.t.Read(sr.cursor)
+			// If we can'sb read anything from the parent buffer, just wait one second.
+			packet := sr.sb.Read(sr.cursor)
 			if packet == nil {
 				time.Sleep(time.Second)
 				continue
@@ -86,4 +99,9 @@ func (sr *Streamer) Stream() chan []byte {
 	}()
 
 	return output
+}
+
+func (sr *Streamer) Close() {
+	close(sr.quit)
+	sr.wg.Wait()
 }

@@ -1,37 +1,46 @@
 package syncbuffer
 
 import (
-	"context"
+	"sync"
 	"time"
 )
 
-// Metronome is the interface that wraps the Beat method.
+// Metronome is the interface that wraps the Beat and Stop methods.
 type Metronome interface {
 	// Beat returns a channel that emits signals.
 	Beat() chan struct{}
+
+	// Stop closes the channel returned by Beat.
+	Stop()
 }
 
 // NewFrequencyMetronome returns a metronome that emits a beat at the given frequency.
 // The metronome is cancelled by the given context.
-func NewFrequencyMetronome(ctx context.Context, freq time.Duration) Metronome {
-	return &frequencyMetronome{
-		ctx:  ctx,
+func NewFrequencyMetronome(freq time.Duration) Metronome {
+	m := &frequencyMetronome{
+		quit: make(chan struct{}),
 		freq: freq,
 	}
+	m.wg.Add(1)
+
+	return m
 }
 
 type frequencyMetronome struct {
-	ctx  context.Context
 	freq time.Duration
+	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
 func (m *frequencyMetronome) Beat() chan struct{} {
 	beat := make(chan struct{})
 
 	go func() {
+		defer m.wg.Done()
+
 		for {
 			select {
-			case <-m.ctx.Done():
+			case <-m.quit:
 				close(beat)
 				return
 			default:
@@ -45,32 +54,43 @@ func (m *frequencyMetronome) Beat() chan struct{} {
 	return beat
 }
 
-// NewManualMetronome returns a metronome and a function to manually control its beat.
-func NewManualMetronome(ctx context.Context) (Metronome, func()) {
-	manualBeat := make(chan struct{})
+func (m *frequencyMetronome) Stop() {
+	close(m.quit)
+	m.wg.Wait()
+}
 
-	go func() {
-		<-ctx.Done()
-		close(manualBeat)
-	}()
+// NewManualMetronome returns a metronome and a function to manually control its beat.
+func NewManualMetronome() (Metronome, func()) {
 
 	m := manualMetronome{
-		ctx:        ctx,
-		manualBeat: manualBeat,
+		manualBeat: make(chan struct{}),
+		quit:       make(chan struct{}),
 	}
+	m.wg.Add(1)
+
+	go func() {
+		defer m.wg.Done()
+		<-m.quit
+		close(m.manualBeat)
+	}()
 
 	f := func() {
-		manualBeat <- struct{}{}
+		m.manualBeat <- struct{}{}
 	}
 
 	return &m, f
 }
 
 type manualMetronome struct {
-	ctx        context.Context
 	manualBeat chan struct{}
+	quit       chan struct{}
+	wg         sync.WaitGroup
 }
 
 func (m *manualMetronome) Beat() chan struct{} {
 	return m.manualBeat
+}
+func (m *manualMetronome) Stop() {
+	close(m.quit)
+	m.wg.Wait()
 }

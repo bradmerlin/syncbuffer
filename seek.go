@@ -62,11 +62,10 @@ func (s *SeekBuffer) Rest(cursor int) []byte {
 	}
 
 	s.dataLock.RLock()
-	pl := s.data[cursor:]
-	s.dataLock.RUnlock()
+	defer s.dataLock.RUnlock()
 
 	var packet []byte
-	for _, p := range pl {
+	for _, p := range s.data[cursor:] {
 		packet = append(packet, p...)
 	}
 

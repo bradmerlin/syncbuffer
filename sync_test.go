@@ -1,7 +1,6 @@
 package syncbuffer
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -9,10 +8,9 @@ import (
 )
 
 func TestSyncBufferOrder(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	m, _ := NewManualMetronome(ctx)
+	m, _ := NewManualMetronome()
 
-	sb := NewSyncBuffer(ctx, m)
+	sb := NewSyncBuffer(m)
 
 	size := 10
 	for i := 0; i < size; i++ {
@@ -20,7 +18,7 @@ func TestSyncBufferOrder(t *testing.T) {
 	}
 
 	// Reader should now start from the beginning of the buffer.
-	r := sb.Reader(ctx)
+	r := sb.Reader()
 
 	var count int
 	for p := range r.Stream() {
@@ -30,16 +28,14 @@ func TestSyncBufferOrder(t *testing.T) {
 
 		count++
 		if count == size {
-			cancel()
+			sb.Close()
 		}
 	}
 }
 
 func TestSyncBufferCursor(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	m, beat := NewManualMetronome(ctx)
-
-	sb := NewSyncBuffer(ctx, m)
+	m, beat := NewManualMetronome()
+	sb := NewSyncBuffer(m)
 
 	size := 10
 	for i := 0; i < size; i++ {
@@ -55,13 +51,13 @@ func TestSyncBufferCursor(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	// Reader should now start from the middle of the buffer
-	r := sb.Reader(ctx)
+	r := sb.Reader()
 
 	var count int
 	for range r.Stream() {
 		count++
 		if count == size/2 {
-			cancel()
+			sb.Close()
 		}
 	}
 
@@ -69,22 +65,20 @@ func TestSyncBufferCursor(t *testing.T) {
 }
 
 func TestSyncBufferCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	m, _ := NewManualMetronome(ctx)
+	m, _ := NewManualMetronome()
 
-	sb := NewSyncBuffer(ctx, m)
+	sb := NewSyncBuffer(m)
 
 	size := 10
 	for i := 0; i < size; i++ {
 		sb.Add([]byte{byte(i)})
 	}
 
-	readerCtx, _ := context.WithCancel(ctx)
-	r := sb.Reader(readerCtx)
+	r := sb.Reader()
 
 	var count int
+	sb.Close()
 	for p := range r.Stream() {
-		cancel()
 		if count == 2 {
 			assert.Len(t, p, 8)
 		}
@@ -94,22 +88,22 @@ func TestSyncBufferCancel(t *testing.T) {
 }
 
 func TestSyncBuffer_ReaderCancel(t *testing.T) {
-	ctx, _ := context.WithCancel(context.Background())
-	m, _ := NewManualMetronome(ctx)
+	m, _ := NewManualMetronome()
 
-	sb := NewSyncBuffer(ctx, m)
+	sb := NewSyncBuffer(m)
 
 	size := 10
 	for i := 0; i < size; i++ {
 		sb.Add([]byte{byte(i)})
 	}
 
-	readerCtx, cancel := context.WithCancel(ctx)
-	r := sb.Reader(readerCtx)
+	r := sb.Reader()
 
 	var count int
 	for p := range r.Stream() {
-		cancel()
+		if count == 1 {
+			r.Close()
+		}
 
 		if count == 2 {
 			// When reader context is cancelled, it just returns its current item.
