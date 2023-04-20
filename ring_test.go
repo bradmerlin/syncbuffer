@@ -51,6 +51,7 @@ func TestNewRingBuffer_ReadFrom(t *testing.T) {
 	assert.Equal(t, []byte{5}, result[0].([]byte))
 	assert.Equal(t, 6, cursor)
 }
+
 func TestR_ReadFrom(t *testing.T) {
 	r := NewRingBuffer(4)
 

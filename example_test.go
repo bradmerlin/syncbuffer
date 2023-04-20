@@ -1,16 +1,16 @@
 package syncbuffer_test
 
 import (
-	"fmt"
+	"log"
 	"sync"
 	"time"
 
-	"github.com/bradmerlin/syncbuffer"
+	"github.com/ny0m/syncbuffer"
 )
 
 func Example() {
 	// New buffer with space for 2 items that adds messages every millisecond.
-	sb := syncbuffer.NewSyncBuffer(time.Millisecond, 2)
+	sb := syncbuffer.NewSyncBuffer(time.Second/2, 2)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -21,11 +21,9 @@ func Example() {
 
 		s := syncbuffer.NewStreamer(sb)
 		for p := range s.Stream() {
-			fmt.Println(p)
+			log.Println(p)
 		}
 	}()
-
-	time.Sleep(time.Millisecond)
 
 	for i := 0; i < 10; i++ {
 		// Add will block until a millisecond has passed.

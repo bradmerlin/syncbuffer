@@ -1,6 +1,6 @@
 # syncbuffer
 
-[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/bradmerlin/syncbuffer/)
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/ny0m/syncbuffer/)
 
 Syncbuffer's structs are useful for applications where multiple separate readers need to 
 be kept roughly synchronised with a source; for example, audio or video streaming.
@@ -14,7 +14,7 @@ import (
     "sync"
     "time"
 
-    "github.com/bradmerlin/syncbuffer"
+    "github.com/ny0m/syncbuffer"
 )
 
 func main() {

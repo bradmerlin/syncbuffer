@@ -70,7 +70,6 @@ type Streamer struct {
 // Stream returns a channel that emits items from the parent buffer as soon
 // as they become available.
 func (st *Streamer) Stream() chan []byte {
-
 	st.wg.Add(1)
 	st.sb.wg.Add(1)
 	go func() {
